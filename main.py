@@ -1,3 +1,4 @@
+# coding=utf8
 import argparse
 import datetime
 import glob
@@ -14,7 +15,7 @@ import torchvision
 import wandb
 from matplotlib import pyplot as plt
 from natsort import natsorted
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf # load和merge yaml conf 用的
 from packaging import version
 from PIL import Image
 from pytorch_lightning import seed_everything
@@ -548,6 +549,7 @@ if __name__ == "__main__":
 
     opt, unknown = parser.parse_known_args()
 
+    # postfix for logdir
     if opt.name and opt.resume:
         raise ValueError(
             "-n/--name and -r/--resume cannot be specified both."
@@ -556,9 +558,11 @@ if __name__ == "__main__":
         )
     melk_ckpt_name = None
     name = None
+    # 从checkpoint或者logdir继续训练
     if opt.resume:
         if not os.path.exists(opt.resume):
             raise ValueError("Cannot find {}".format(opt.resume))
+        # checkpoint
         if os.path.isfile(opt.resume):
             paths = opt.resume.split("/")
             # idx = len(paths)-paths[::-1].index("logs")+1
@@ -566,6 +570,7 @@ if __name__ == "__main__":
             logdir = "/".join(paths[:-2])
             ckpt = opt.resume
             _, melk_ckpt_name = get_checkpoint_name(logdir)
+        # logdir
         else:
             assert os.path.isdir(opt.resume), opt.resume
             logdir = opt.resume.rstrip("/")
@@ -609,6 +614,7 @@ if __name__ == "__main__":
             nowname = name + opt.postfix
             if nowname.startswith("_"):
                 nowname = nowname[1:]
+        # 默认在 ./logs
         logdir = os.path.join(opt.logdir, nowname)
         print(f"LOGDIR: {logdir}")
 
@@ -618,6 +624,8 @@ if __name__ == "__main__":
 
     # move before model init, in case a torch.compile(...) is called somewhere
     if opt.enable_tf32:
+        # TF32的性能更好，但需要Ampere，torch1.7-1.11默认为true，1.12后默认为False
+        # TF32的原理细节 https://blogs.nvidia.com/blog/tensorfloat-32-precision-format/
         # pt_version = version.parse(torch.__version__)
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
@@ -631,6 +639,7 @@ if __name__ == "__main__":
 
     try:
         # init and save configs
+        # 例子 python main.py --base configs/example_training/toy/mnist_cond.yaml
         configs = [OmegaConf.load(cfg) for cfg in opt.base]
         cli = OmegaConf.from_dotlist(unknown)
         config = OmegaConf.merge(*configs, cli)
