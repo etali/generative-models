@@ -30,6 +30,7 @@ MULTINODE_HACKS = True
 
 
 def default_trainer_args():
+    # inspect.signature 获取一个函数的签名，拿到名字、输入变量等，目的是为了通过yaml来参数化一个object
     argspec = dict(inspect.signature(Trainer.__init__).parameters)
     argspec.pop("self")
     default_args = {
@@ -624,7 +625,7 @@ if __name__ == "__main__":
 
     # move before model init, in case a torch.compile(...) is called somewhere
     if opt.enable_tf32:
-        # TF32的性能更好，但需要Ampere，torch1.7-1.11默认为true，1.12后默认为False
+        # TF32的速度更好（速度快7倍），精度更低（误差涨100倍），但需要Ampere，torch1.7-1.11默认为true，1.12后默认为False
         # TF32的原理细节 https://blogs.nvidia.com/blog/tensorfloat-32-precision-format/
         # pt_version = version.parse(torch.__version__)
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -668,12 +669,14 @@ if __name__ == "__main__":
         lightning_config.trainer = trainer_config
 
         # model
+        # 用模型代码+参数生成 diffusion model class 的 obj 
         model = instantiate_from_config(config.model)
 
         # trainer and callbacks
         trainer_kwargs = dict()
 
-        # default logger configs
+        ##### BEGIN default logger configs #####
+        # 为什么不写到configs目录下
         default_logger_cfgs = {
             "wandb": {
                 "target": "pytorch_lightning.loggers.WandbLogger",
@@ -716,6 +719,7 @@ if __name__ == "__main__":
             logger_cfg = OmegaConf.create()
         logger_cfg = OmegaConf.merge(default_logger_cfg, logger_cfg)
         trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
+        ##### END default logger configs #####
 
         # modelcheckpoint - use TrainResult/EvalResult(checkpoint_on=metric) to
         # specify which metric is used to determine best models
@@ -740,6 +744,7 @@ if __name__ == "__main__":
         modelckpt_cfg = OmegaConf.merge(default_modelckpt_cfg, modelckpt_cfg)
         print(f"Merged modelckpt-cfg: \n{modelckpt_cfg}")
 
+        ##### BEGIN 建立 lightin 的 Strategy #####
         # https://pytorch-lightning.readthedocs.io/en/stable/extensions/strategy.html
         # default to ddp if not further specified
         default_strategy_config = {"target": "pytorch_lightning.strategies.DDPStrategy"}
@@ -758,7 +763,9 @@ if __name__ == "__main__":
             f"strategy config: \n ++++++++++++++ \n {strategy_cfg} \n ++++++++++++++ "
         )
         trainer_kwargs["strategy"] = instantiate_from_config(strategy_cfg)
+        ##### END 建立 lighting 的 Strategy #####
 
+        ##### BEGIN 建立callbacks #####
         # add callback which sets up log directory
         default_callbacks_cfg = {
             "setup_callback": {
@@ -825,6 +832,7 @@ if __name__ == "__main__":
         ]
         if not "plugins" in trainer_kwargs:
             trainer_kwargs["plugins"] = list()
+        ##### END 建立callbacks #####
 
         # cmd line trainer args (which are in trainer_opt) have always priority over config-trainer-args (which are in trainer_kwargs)
         trainer_opt = vars(trainer_opt)
