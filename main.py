@@ -700,6 +700,7 @@ if __name__ == "__main__":
         }
         default_logger_cfg = default_logger_cfgs["wandb" if opt.wandb else "csv"]
         if opt.wandb:
+            # 记录实验数据用，效率工具
             # TODO change once leaving "swiffer" config directory
             try:
                 group_name = nowname.split(now)[-1].split("-")[1]
@@ -834,6 +835,7 @@ if __name__ == "__main__":
             trainer_kwargs["plugins"] = list()
         ##### END 建立callbacks #####
 
+        ##### BEGIN 建立lightning 的 Trainer #####
         # cmd line trainer args (which are in trainer_opt) have always priority over config-trainer-args (which are in trainer_kwargs)
         trainer_opt = vars(trainer_opt)
         trainer_kwargs = {
@@ -842,8 +844,10 @@ if __name__ == "__main__":
         trainer = Trainer(**trainer_opt, **trainer_kwargs)
 
         trainer.logdir = logdir  ###
+        ##### END 建立lightning 的 Trainer #####
 
-        # data
+        ##### BEGIN data #####
+        # 主要是 sgm.data.dataset.StableDataModuleFromConfig
         data = instantiate_from_config(config.data)
         # NOTE according to https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
         # calling these ourselves should not be necessary but it is.
@@ -859,7 +863,7 @@ if __name__ == "__main__":
         except:
             print("datasets not yet initialized.")
 
-        # configure learning rate
+        # configure learning rate, 为什么存在两个地方同时有bs，不优雅
         if "batch_size" in config.data.params:
             bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
         else:
@@ -888,6 +892,7 @@ if __name__ == "__main__":
             model.learning_rate = base_lr
             print("++++ NOT USING LR SCALING ++++")
             print(f"Setting learning rate to {model.learning_rate:.2e}")
+        ##### END data #####
 
         # allow checkpointing via USR1
         def melk(*args, **kwargs):
@@ -907,7 +912,6 @@ if __name__ == "__main__":
                 pudb.set_trace()
 
         import signal
-
         signal.signal(signal.SIGUSR1, melk)
         signal.signal(signal.SIGUSR2, divein)
 
